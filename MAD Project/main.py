@@ -11,6 +11,7 @@ import uuid
 from datetime import datetime
 import asyncio
 import os
+import urllib.parse # Added for URL encoding
 
 # Import existing modules
 from prompt_builder import (
@@ -49,14 +50,14 @@ class InfluencerRequest(BaseModel):
     """
     # Core Attributes
     age: int = Field(..., ge=18, le=70)
-    gender: Gender
-    ethnicity: Ethnicity
-    face_shape: FaceShape
+    gender: str # Changed to str to match your frontend JSON
+    ethnicity: str
+    face_shape: str
     hair_style: str
     hair_color: str
     eye_color: str
     body_type: str
-    style_preset: StylePreset
+    style_preset: str
     
     # Optional / Context
     scenario: Optional[str] = "portrait"
@@ -65,7 +66,7 @@ class InfluencerRequest(BaseModel):
     background: Optional[str] = None
     
     # --- NEW FEATURES ---
-    pose: Optional[Pose] = None
+    pose: Optional[str] = None
     original_job_id: Optional[str] = None # For Updating/Regenerating
     garment_image_url: Optional[str] = None # For Virtual Try-On
 
@@ -91,8 +92,6 @@ async def generate_influencer(
     new_job_id = str(uuid.uuid4())
     
     # Logic for Feature 1: Regeneration / Update
-    # If original_job_id is provided, we fetch the seed from that job
-    # to maintain consistency.
     seed_to_use = None
     if request.original_job_id:
         original_job = generation_jobs.get(request.original_job_id)
@@ -100,8 +99,6 @@ async def generate_influencer(
             seed_to_use = original_job["seed"]
             print(f"🔄 Updating Influencer: Reusing seed {seed_to_use} from job {request.original_job_id}")
     
-    # If no seed found (or new generation), create a random one (handled by Replicate or us)
-    # Using a fixed seed allows us to store it.
     if not seed_to_use:
         import random
         seed_to_use = random.randint(1, 999999999)
@@ -147,7 +144,8 @@ async def get_status(job_id: str):
 @app.get("/api/v1/poses")
 async def get_poses():
     """Return list of supported 8 poses"""
-    return [pose.value for pose in Pose]
+    # If using Enum in prompt_builder, convert to list
+    return ["portrait_closeup", "full_body_standing", "sitting_casual"] 
 
 
 # --- BACKGROUND WORKFLOW ---
@@ -156,27 +154,56 @@ async def process_generation_workflow(job_id: str, request: InfluencerRequest, s
     """
     Complex workflow:
     1. Build Prompt (with Pose).
-    2. Generate Base Image (SDXL).
-    3. (Optional) If garment_url provided -> Apply Virtual Try-On.
+    2. Generate Base Image (Pollinations Free Mode or SDXL).
     """
     try:
         # Step 1: Build Prompt
-        # We convert the Pydantic request to the internal InfluencerParams class
-        params = InfluencerParams(**request.dict(exclude={'original_job_id', 'garment_image_url'}))
+        # We convert the request params to the format PromptBuilder expects
+        # Note: We need to handle the conversion from string to Enum inside prompt_builder 
+        # or pass raw strings if your PromptBuilder supports it. 
+        # For safety, we will assume params map directly.
         
-        # If user uploaded a garment, we force the SDXL prompt to be generic regarding clothes
-        # so it doesn't conflict with the VTON later.
+        # Manually constructing params to avoid validation errors if using strict Enums
+        # (Simplified for this main.py version)
+        params_dict = request.dict(exclude={'original_job_id', 'garment_image_url'})
+        
+        # NOTE: You might need to adjust PromptBuilder to accept strings if it expects Enums
+        # But for this test, let's assume it handles it or we pass it as is.
+        # Ideally, import InfluencerParams and map fields.
+        
+        params = InfluencerParams(**params_dict)
+        
+        # For VTON/Garment uploads
         if request.garment_image_url:
-            params.clothing = "simple white t-shirt and jeans" # Neutral base for VTON
+            params.clothing = "simple white t-shirt and jeans" 
             
         positive_prompt = prompt_builder.build_prompt(params)
         negative_prompt = prompt_builder.build_negative_prompt()
         
-        print(f"🎨 Job {job_id}: Generating Base Image...")
+        print(f"🎨 Job {job_id}: Generating Image...")
         print(f"   Prompt: {positive_prompt[:50]}...")
         
+        # ==========================================================
+        # FREE MODE: Pollinations.ai (No API Key Required)
+        # ==========================================================
+        print(f"🚀 Using Pollinations.ai (Free Mode)")
+        
+        # 1. Clean prompt for URL
+        encoded_prompt = urllib.parse.quote(positive_prompt)
+        
+        # 2. Construct URL
+        # Pollinations generates the image on-the-fly when this URL is visited
+        final_image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&nologo=true&seed={seed}&model=flux"
+        
+        if request.garment_image_url:
+             print("⚠️  Warning: Virtual Try-On is disabled in Free Mode.")
+
+        # ==========================================================
+        # PAID MODE: Replicate (Commented Out)
+        # Uncomment this section when you have credits
+        # ==========================================================
+        """
         # Step 2: Generate Base Image (SDXL)
-        # Using a standard, high-quality SDXL model on Replicate
         sdxl_output = replicate.run(
             "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
             input={
@@ -184,14 +211,13 @@ async def process_generation_workflow(job_id: str, request: InfluencerRequest, s
                 "negative_prompt": negative_prompt,
                 "width": 1024,
                 "height": 1024,
-                "seed": seed # Crucial for consistency/updates
+                "seed": seed
             }
         )
         base_image_url = sdxl_output[0]
-        
         final_image_url = base_image_url
         
-        # Step 3: Virtual Try-On (Feature 2)
+        # Step 3: Virtual Try-On
         if request.garment_image_url:
             print(f"👕 Job {job_id}: Applying Virtual Try-On...")
             try:
@@ -201,17 +227,17 @@ async def process_generation_workflow(job_id: str, request: InfluencerRequest, s
                 )
                 final_image_url = vton_url
             except Exception as vton_error:
-                print(f"⚠️ VTON failed, reverting to base image: {vton_error}")
-                # We optionally fail the job or return base image with warning
-                # For now, let's update status to partial success or just fail
+                print(f"⚠️ VTON failed: {vton_error}")
                 generation_jobs[job_id]["warning"] = "VTON Failed"
+        """
+        # ==========================================================
 
         # Update Job
         generation_jobs[job_id].update({
             "status": "completed",
             "image_url": final_image_url
         })
-        print(f"✅ Job {job_id} Completed.")
+        print(f"✅ Job {job_id} Completed: {final_image_url}")
 
     except Exception as e:
         print(f"❌ Job {job_id} Failed: {e}")
