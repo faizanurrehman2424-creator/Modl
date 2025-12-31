@@ -3,75 +3,31 @@ AI Influencer Prompt Builder for SDXL
 Converts structured user input into optimized SDXL prompts
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from dataclasses import dataclass
-from enum import Enum
-import json
 
-
-class Gender(str, Enum):
-    MALE = "male"
-    FEMALE = "female"
-    NON_BINARY = "non-binary"
-
-
-class FaceShape(str, Enum):
-    OVAL = "oval"
-    ROUND = "round"
-    SQUARE = "square"
-    HEART = "heart-shaped"
-    LONG = "long"
-    DIAMOND = "diamond"
-
-
-class Ethnicity(str, Enum):
-    CAUCASIAN = "caucasian"
-    ASIAN = "asian"
-    AFRICAN = "african"
-    HISPANIC = "hispanic"
-    MIDDLE_EASTERN = "middle eastern"
-    MIXED = "mixed"
-
-
-class StylePreset(str, Enum):
-    FITNESS = "fitness_influencer"
-    FASHION = "fashion_blogger"
-    LIFESTYLE = "lifestyle"
-    PROFESSIONAL = "professional"
-    TRAVEL = "travel_blogger"
-    BEAUTY = "beauty_guru"
-    TECH = "tech_reviewer"
-
-
-class Pose(str, Enum):
-    """Supported poses for the influencer"""
-    PORTRAIT_CLOSEUP = "portrait_closeup"
-    FULL_BODY_STANDING = "full_body_standing"
-    SITTING_CASUAL = "sitting_casual"
-    WALKING_TOWARD_CAMERA = "walking_toward_camera"
-    SIDE_PROFILE = "side_profile"
-    LEANING_AGAINST_WALL = "leaning_against_wall"
-    CROSSED_ARMS = "crossed_arms_confident"
-    HOLDING_PRODUCT = "holding_product_placeholder"
-
+# NOTE: We removed the Enum classes (Gender, Ethnicity, etc.) 
+# because the data comes in as simple strings from the API.
 
 @dataclass
 class InfluencerParams:
     """Structured input from frontend"""
     age: int
-    gender: Gender
-    ethnicity: Ethnicity
-    face_shape: FaceShape
+    gender: str       # Changed from Gender to str
+    ethnicity: str    # Changed from Ethnicity to str
+    face_shape: str   # Changed from FaceShape to str
     hair_style: str
     hair_color: str
     eye_color: str
     body_type: str
-    style_preset: StylePreset
+    style_preset: str # Changed from StylePreset to str
     scenario: Optional[str] = "portrait"
     clothing: Optional[str] = None
     expression: Optional[str] = "friendly smile"
     background: Optional[str] = None
-    pose: Optional[Pose] = None
+    pose: Optional[str] = None
+    garment_image_url: Optional[str] = None 
+    original_job_id: Optional[str] = None
 
 
 class PromptBuilder:
@@ -92,50 +48,51 @@ class PromptBuilder:
         ]
         
         # Style preset configurations
+        # WE USE STRING KEYS HERE NOW to match the input text
         self.style_presets = {
-            StylePreset.FITNESS: {
+            "fitness_influencer": {
                 "environment": "modern gym, fitness studio",
                 "lighting": "dramatic gym lighting, high contrast",
                 "mood": "motivational, energetic, athletic",
                 "composition": "dynamic pose, action shot",
                 "extras": "athletic physique, toned muscles"
             },
-            StylePreset.FASHION: {
+            "fashion_blogger": {
                 "environment": "urban street, city background, fashion district",
                 "lighting": "golden hour, natural light, soft shadows",
                 "mood": "stylish, confident, trendy",
                 "composition": "full body shot, fashion pose",
                 "extras": "trendy outfit, street style, fashionable"
             },
-            StylePreset.LIFESTYLE: {
+            "lifestyle": {
                 "environment": "cozy home interior, cafe, outdoor park",
                 "lighting": "natural window light, soft ambient lighting",
                 "mood": "casual, relaxed, authentic, candid",
                 "composition": "medium shot, natural pose",
                 "extras": "casual wear, everyday style"
             },
-            StylePreset.PROFESSIONAL: {
+            "professional": {
                 "environment": "office, studio, neutral background",
                 "lighting": "professional studio lighting, three-point lighting",
                 "mood": "confident, professional, approachable",
                 "composition": "headshot, corporate portrait",
                 "extras": "business attire, formal wear"
             },
-            StylePreset.TRAVEL: {
+            "travel_blogger": {
                 "environment": "exotic location, travel destination, scenic background",
                 "lighting": "natural outdoor lighting, sunset, golden hour",
                 "mood": "adventurous, excited, wanderlust",
                 "composition": "environmental portrait, location emphasis",
                 "extras": "travel outfit, backpack, camera"
             },
-            StylePreset.BEAUTY: {
+            "beauty_guru": {
                 "environment": "beauty studio, clean background, makeup station",
                 "lighting": "ring light, beauty lighting, soft diffused light",
                 "mood": "glamorous, polished, elegant",
                 "composition": "close-up portrait, beauty shot",
                 "extras": "makeup, skincare, beauty products"
             },
-            StylePreset.TECH: {
+            "tech_reviewer": {
                 "environment": "modern office, tech workspace, minimalist setup",
                 "lighting": "LED lighting, clean studio light",
                 "mood": "innovative, professional, knowledgeable",
@@ -144,16 +101,16 @@ class PromptBuilder:
             }
         }
 
-        # Pose configurations (New Feature)
+        # Pose configurations
         self.pose_tokens = {
-            Pose.PORTRAIT_CLOSEUP: "close-up face portrait, looking at camera, head and shoulders shot",
-            Pose.FULL_BODY_STANDING: "full body shot, standing confidently, facing camera, fashion pose, entire outfit visible, wide angle",
-            Pose.SITTING_CASUAL: "sitting casually on a chair, relaxed posture, knee up, lifestyle photography",
-            Pose.WALKING_TOWARD_CAMERA: "walking towards the camera, dynamic movement, street style photography, in motion",
-            Pose.SIDE_PROFILE: "side profile view, looking into distance, turning head, artistic angle",
-            Pose.LEANING_AGAINST_WALL: "leaning back against a wall, cool attitude, relaxed stance, fashion editorial pose",
-            Pose.CROSSED_ARMS: "standing with arms crossed, powerful stance, boss energy, professional posture",
-            Pose.HOLDING_PRODUCT: "holding an object in hand, presenting to camera, focus on hands, promotional pose"
+            "portrait_closeup": "close-up face portrait, looking at camera, head and shoulders shot",
+            "full_body_standing": "full body shot, standing confidently, facing camera, fashion pose, entire outfit visible, wide angle",
+            "sitting_casual": "sitting casually on a chair, relaxed posture, knee up, lifestyle photography",
+            "walking_toward_camera": "walking towards the camera, dynamic movement, street style photography, in motion",
+            "side_profile": "side profile view, looking into distance, turning head, artistic angle",
+            "leaning_against_wall": "leaning back against a wall, cool attitude, relaxed stance, fashion editorial pose",
+            "crossed_arms_confident": "standing with arms crossed, powerful stance, boss energy, professional posture",
+            "holding_product_placeholder": "holding an object in hand, presenting to camera, focus on hands, promotional pose"
         }
         
         # Age descriptors
@@ -215,9 +172,10 @@ class PromptBuilder:
         
         # 3. Pose (New Feature)
         if params.pose:
-            pose_desc = self.pose_tokens.get(params.pose)
+            # Clean key
+            pose_key = params.pose.lower().replace(" ", "_")
+            pose_desc = self.pose_tokens.get(pose_key)
             if pose_desc:
-                # We weight the pose slightly higher to ensure SDXL respects it
                 prompt_parts.append(f"({pose_desc}:1.3)")
         
         # 4. Style preset elements
@@ -234,24 +192,26 @@ class PromptBuilder:
         """Build the core subject description"""
         age_desc = self._get_age_descriptor(params.age)
         
-        subject = f"professional portrait photograph of a {age_desc} {params.gender.value} {params.ethnicity.value} person"
+        # FIX: Removed .value calls. We assume params.gender/ethnicity are already strings.
+        subject = f"professional portrait photograph of a {age_desc} {params.gender} {params.ethnicity} person"
         return subject
     
     def _build_physical_features(self, params: InfluencerParams) -> str:
         """Build detailed physical feature description"""
         features = []
         
-        features.append(f"{params.face_shape.value} face shape")
+        # FIX: Removed .value call
+        features.append(f"{params.face_shape} face shape")
         
-        hair_style = self.hair_style_tokens.get(params.hair_style, params.hair_style)
+        hair_style = self.hair_style_tokens.get(params.hair_style.lower(), params.hair_style)
         features.append(f"{hair_style}, {params.hair_color} hair")
         
         features.append(f"{params.eye_color} eyes")
         
-        body = self.body_type_tokens.get(params.body_type, params.body_type)
+        body = self.body_type_tokens.get(params.body_type.lower(), params.body_type)
         features.append(body)
         
-        expression = self.expression_tokens.get(params.expression, params.expression)
+        expression = self.expression_tokens.get(params.expression.lower(), params.expression)
         features.append(expression)
         
         if params.clothing:
@@ -261,7 +221,9 @@ class PromptBuilder:
     
     def _build_style_elements(self, params: InfluencerParams) -> str:
         """Build style-specific elements"""
-        preset = self.style_presets.get(params.style_preset, {})
+        # Normalize the key: "Fashion Blogger" -> "fashion_blogger"
+        preset_key = params.style_preset.lower().replace(" ", "_")
+        preset = self.style_presets.get(preset_key, {})
         
         style_parts = []
         
@@ -279,7 +241,7 @@ class PromptBuilder:
         if preset.get("mood"):
             style_parts.append(preset["mood"])
         
-        # Composition (Only add if no specific pose was selected to avoid conflict)
+        # Composition
         if not params.pose and preset.get("composition"):
             style_parts.append(preset["composition"])
         
@@ -326,15 +288,15 @@ if __name__ == "__main__":
     builder = PromptBuilder()
     params = InfluencerParams(
         age=25,
-        gender=Gender.FEMALE,
-        ethnicity=Ethnicity.ASIAN,
-        face_shape=FaceShape.OVAL,
+        gender="female",
+        ethnicity="asian",
+        face_shape="oval",
         hair_style="long",
         hair_color="black",
         eye_color="brown",
         body_type="slim",
-        style_preset=StylePreset.FASHION,
-        pose=Pose.FULL_BODY_STANDING,
+        style_preset="fashion_blogger",
+        pose="full_body_standing",
         clothing="red dress"
     )
     print(builder.build_prompt(params))
