@@ -37,10 +37,7 @@ generation_jobs = {}
 # --- MODELS ---
 
 class InfluencerRequest(BaseModel):
-    """
-    Request model matching the Android App JSON
-    All Enums are now simple strings to prevent validation errors
-    """
+    # ... existing fields ...
     age: int = Field(..., ge=18, le=70)
     gender: str
     ethnicity: str
@@ -57,11 +54,14 @@ class InfluencerRequest(BaseModel):
     expression: Optional[str] = "friendly smile"
     background: Optional[str] = None
     
-    # New Features
-    pose: Optional[str] = None
+    # --- NEW FEATURES (Must match Android Retrofit keys) ---
+    pose: Optional[str] = "standing"
+    framing: Optional[str] = "waist_up"      # Added
+    camera_angle: Optional[str] = "eye_level" # Added
+    # -----------------------------------------------------
+
     original_job_id: Optional[str] = None
     garment_image_url: Optional[str] = None
-
 
 class GenerationResponse(BaseModel):
     job_id: str
@@ -175,3 +175,4 @@ async def process_generation_workflow(job_id: str, request: InfluencerRequest, s
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
