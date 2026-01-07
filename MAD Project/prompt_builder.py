@@ -10,28 +10,29 @@ from dataclasses import dataclass
 class InfluencerParams:
     """Structured input from frontend"""
     age: int
-    gender: str       
-    ethnicity: str    
-    face_shape: str   
+    gender: str
+    ethnicity: str
+    face_shape: str
     hair_style: str
     hair_color: str
     eye_color: str
     body_type: str
-    style_preset: str 
+    style_preset: str
+    
+    # Optional Fields
     scenario: Optional[str] = "portrait"
     clothing: Optional[str] = None
     expression: Optional[str] = "friendly smile"
     background: Optional[str] = None
     
-    # --- NEW FIELDS FOR CAMERA CONTROL ---
+    # --- NEW FIELDS (These were missing!) ---
     pose: Optional[str] = "standing"
     framing: Optional[str] = "waist_up"
     camera_angle: Optional[str] = "eye_level"
-    # -------------------------------------
-    
-    garment_image_url: Optional[str] = None 
-    original_job_id: Optional[str] = None
+    # --------------------------------------
 
+    garment_image_url: Optional[str] = None
+    original_job_id: Optional[str] = None
 
 class PromptBuilder:
     """
@@ -342,3 +343,4 @@ if __name__ == "__main__":
         camera_angle="low_angle"
     )
     print(builder.build_prompt(params))
+
