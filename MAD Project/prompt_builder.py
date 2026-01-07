@@ -1,31 +1,34 @@
-"""
-AI Influencer Prompt Builder for SDXL
-Converts structured user input into optimized SDXL prompts
+""""
+AI Influencer Prompt Builder for SDXL/Flux
+Updated to prioritize Framing and Pose (Fixes Headshot Issue)
 """
 
 from typing import Dict, List, Optional
 from dataclasses import dataclass
 
-# NOTE: We removed the Enum classes (Gender, Ethnicity, etc.) 
-# because the data comes in as simple strings from the API.
-
 @dataclass
 class InfluencerParams:
     """Structured input from frontend"""
     age: int
-    gender: str       # Changed from Gender to str
-    ethnicity: str    # Changed from Ethnicity to str
-    face_shape: str   # Changed from FaceShape to str
+    gender: str       
+    ethnicity: str    
+    face_shape: str   
     hair_style: str
     hair_color: str
     eye_color: str
     body_type: str
-    style_preset: str # Changed from StylePreset to str
+    style_preset: str 
     scenario: Optional[str] = "portrait"
     clothing: Optional[str] = None
     expression: Optional[str] = "friendly smile"
     background: Optional[str] = None
-    pose: Optional[str] = None
+    
+    # --- NEW FIELDS FOR CAMERA CONTROL ---
+    pose: Optional[str] = "standing"
+    framing: Optional[str] = "waist_up"
+    camera_angle: Optional[str] = "eye_level"
+    # -------------------------------------
+    
     garment_image_url: Optional[str] = None 
     original_job_id: Optional[str] = None
 
@@ -47,8 +50,24 @@ class PromptBuilder:
             "photorealistic"
         ]
         
+        # --- NEW: FRAMING TOKENS (Crucial for fixing headshots) ---
+        self.framing_tokens = {
+            "full_body": "full body wide shot, entire outfit visible, head to toe, wide angle",
+            "waist_up": "medium shot, waist up portrait",
+            "headshot": "close-up face portrait, head and shoulders",
+            "extreme_close_up": "extreme close-up macro shot of face"
+        }
+
+        # --- NEW: CAMERA ANGLE TOKENS ---
+        self.camera_angle_tokens = {
+            "eye_level": "eye level angle",
+            "low_angle": "low angle shot looking up, empowering angle",
+            "high_angle": "high angle shot looking down",
+            "dutch_angle": "dutch angle, tilted camera, dynamic",
+            "overhead": "overhead drone shot, top down view"
+        }
+        
         # Style preset configurations
-        # WE USE STRING KEYS HERE NOW to match the input text
         self.style_presets = {
             "fitness_influencer": {
                 "environment": "modern gym, fitness studio",
@@ -61,21 +80,21 @@ class PromptBuilder:
                 "environment": "urban street, city background, fashion district",
                 "lighting": "golden hour, natural light, soft shadows",
                 "mood": "stylish, confident, trendy",
-                "composition": "full body shot, fashion pose",
+                "composition": "fashion pose", # Removed "full body" hardcode to let user decide
                 "extras": "trendy outfit, street style, fashionable"
             },
             "lifestyle": {
                 "environment": "cozy home interior, cafe, outdoor park",
                 "lighting": "natural window light, soft ambient lighting",
                 "mood": "casual, relaxed, authentic, candid",
-                "composition": "medium shot, natural pose",
+                "composition": "natural pose",
                 "extras": "casual wear, everyday style"
             },
             "professional": {
                 "environment": "office, studio, neutral background",
                 "lighting": "professional studio lighting, three-point lighting",
                 "mood": "confident, professional, approachable",
-                "composition": "headshot, corporate portrait",
+                "composition": "corporate portrait",
                 "extras": "business attire, formal wear"
             },
             "travel_blogger": {
@@ -89,7 +108,7 @@ class PromptBuilder:
                 "environment": "beauty studio, clean background, makeup station",
                 "lighting": "ring light, beauty lighting, soft diffused light",
                 "mood": "glamorous, polished, elegant",
-                "composition": "close-up portrait, beauty shot",
+                "composition": "beauty shot",
                 "extras": "makeup, skincare, beauty products"
             },
             "tech_reviewer": {
@@ -103,14 +122,20 @@ class PromptBuilder:
 
         # Pose configurations
         self.pose_tokens = {
-            "portrait_closeup": "close-up face portrait, looking at camera, head and shoulders shot",
-            "full_body_standing": "full body shot, standing confidently, facing camera, fashion pose, entire outfit visible, wide angle",
-            "sitting_casual": "sitting casually on a chair, relaxed posture, knee up, lifestyle photography",
-            "walking_toward_camera": "walking towards the camera, dynamic movement, street style photography, in motion",
-            "side_profile": "side profile view, looking into distance, turning head, artistic angle",
-            "leaning_against_wall": "leaning back against a wall, cool attitude, relaxed stance, fashion editorial pose",
-            "crossed_arms_confident": "standing with arms crossed, powerful stance, boss energy, professional posture",
-            "holding_product_placeholder": "holding an object in hand, presenting to camera, focus on hands, promotional pose"
+            "standing": "standing confidently",
+            "sitting": "sitting relaxed",
+            "walking": "walking towards camera, in motion",
+            "leaning": "leaning against wall",
+            "crossed_arms": "arms crossed",
+            "hands_in_pockets": "hands in pockets",
+            "portrait_closeup": "close-up face portrait, looking at camera",
+            "full_body_standing": "full body shot, standing confidently",
+            "sitting_casual": "sitting casually on a chair",
+            "walking_toward_camera": "walking towards the camera",
+            "side_profile": "side profile view",
+            "leaning_against_wall": "leaning back against a wall",
+            "crossed_arms_confident": "standing with arms crossed",
+            "holding_product_placeholder": "holding an object in hand"
         }
         
         # Age descriptors
@@ -162,27 +187,39 @@ class PromptBuilder:
         """
         prompt_parts = []
         
-        # 1. Subject description (Most important)
+        # --- 1. FRAMING & CAMERA (First Priority) ---
+        # We put this first so the AI knows the composition immediately
+        framing_key = params.framing.lower().replace(" ", "_") if params.framing else "waist_up"
+        framing_desc = self.framing_tokens.get(framing_key, "medium shot")
+        prompt_parts.append(framing_desc)
+
+        if params.camera_angle:
+            angle_key = params.camera_angle.lower().replace(" ", "_")
+            angle_desc = self.camera_angle_tokens.get(angle_key, "")
+            if angle_desc:
+                prompt_parts.append(angle_desc)
+        
+        # --- 2. SUBJECT DESCRIPTION ---
         subject = self._build_subject_description(params)
         prompt_parts.append(subject)
         
-        # 2. Physical features
-        features = self._build_physical_features(params)
-        prompt_parts.append(features)
-        
-        # 3. Pose (New Feature)
+        # --- 3. POSE (High Priority) ---
         if params.pose:
             # Clean key
             pose_key = params.pose.lower().replace(" ", "_")
-            pose_desc = self.pose_tokens.get(pose_key)
-            if pose_desc:
-                prompt_parts.append(f"({pose_desc}:1.3)")
+            pose_desc = self.pose_tokens.get(pose_key, params.pose)
+            # We add weight (1.3) to force the pose
+            prompt_parts.append(f"({pose_desc}:1.3)")
         
-        # 4. Style preset elements
+        # --- 4. PHYSICAL FEATURES ---
+        features = self._build_physical_features(params)
+        prompt_parts.append(features)
+        
+        # --- 5. STYLE PRESET ELEMENTS ---
         style = self._build_style_elements(params)
         prompt_parts.append(style)
         
-        # 5. Quality tokens
+        # --- 6. QUALITY TOKENS ---
         quality = ", ".join(self.quality_tokens)
         prompt_parts.append(quality)
         
@@ -192,15 +229,17 @@ class PromptBuilder:
         """Build the core subject description"""
         age_desc = self._get_age_descriptor(params.age)
         
-        # FIX: Removed .value calls. We assume params.gender/ethnicity are already strings.
-        subject = f"professional portrait photograph of a {age_desc} {params.gender} {params.ethnicity} person"
+        # --- FIX: REMOVED "PORTRAIT" FROM HERE ---
+        # Old code: "professional portrait photograph of a..."
+        # New code: "professional photograph of a..."
+        # This allows the 'framing' variable (Step 1) to control the shot type.
+        subject = f"professional photograph of a {age_desc} {params.gender} {params.ethnicity} person"
         return subject
     
     def _build_physical_features(self, params: InfluencerParams) -> str:
         """Build detailed physical feature description"""
         features = []
         
-        # FIX: Removed .value call
         features.append(f"{params.face_shape} face shape")
         
         hair_style = self.hair_style_tokens.get(params.hair_style.lower(), params.hair_style)
@@ -242,6 +281,7 @@ class PromptBuilder:
             style_parts.append(preset["mood"])
         
         # Composition
+        # Only add preset composition if user didn't specify a pose
         if not params.pose and preset.get("composition"):
             style_parts.append(preset["composition"])
         
@@ -297,6 +337,8 @@ if __name__ == "__main__":
         body_type="slim",
         style_preset="fashion_blogger",
         pose="full_body_standing",
-        clothing="red dress"
+        clothing="red dress",
+        framing="full_body",
+        camera_angle="low_angle"
     )
     print(builder.build_prompt(params))
